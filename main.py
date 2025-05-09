@@ -14,6 +14,13 @@ mpDraw = mp.solutions.drawing_utils
 vetores_preparados = False
 
 
+def comparar_gestos(vetor1, vetor2):
+    """Compara dois gestos usando distância euclidiana"""
+    if vetor1 is None or vetor2 is None:
+        return float('inf')  # Retorna uma distância muito grande se algum vetor for inválido
+    return np.linalg.norm(vetor1 - vetor2)
+
+
 # Função para extrair os landmarks de um frame
 def extrair_landmarks(frame_video):
     frame_rgb = cv2.cvtColor(frame_video, cv2.COLOR_BGR2RGB)
@@ -158,77 +165,107 @@ def reproduzir_video_cv2(caminho):
 
 
 def jogo(num_palavras):
-    rodando = True
-    hasVideosSelected = False
-    index_video = 0
-    cap = None
-    mostrar_proximo_em = 0
-    esperando_proximo = False
+    # Fase 1: Mostrar todos os vídeos
+    videos = sorted([f for f in os.listdir('assets') if f.endswith('.mp4')])
+    videos = videos[:num_palavras]
+    random.shuffle(videos)
 
-    while rodando:
-        tela.fill((100, 150, 250))
+    # Mostrar todos os vídeos primeiro
+    for video_nome in videos:
+        video_path = os.path.join("assets", video_nome)
+        cap = cv2.VideoCapture(video_path)
 
-        if not hasVideosSelected:
-            videos = sorted(
-                [f for f in os.listdir('assets') if f.endswith('.mp4')])  # Lista os vídeos da pasta 'assets'
-            # Garantir que não ultrapasse o número de vídeos disponíveis
-            videos = videos[:num_palavras]
-            # Embaralha os vídeos para seleção aleatória
-            random.shuffle(videos)
-
-        if index_video < len(videos):
-            if not cap:
-                video_atual_nome = videos[index_video]
-                video_path = os.path.join("assets", video_atual_nome)
-                cap = cv2.VideoCapture(video_path)
-                if not cap.isOpened():
-                    print(f"❌ Erro ao abrir vídeo: {video_path}")
-                    index_video += 1
-                    continue
-                print(f"▶️ Reproduzindo: {video_atual_nome}")
-
+        while cap.isOpened():
             ret, frame = cap.read()
-            if not ret:  # Se o vídeo terminou
-                cap.release()  # Libera o vídeo
-                cap = None
-                index_video += 1  # Avança para o próximo vídeo
-                continue  # Vai para o próximo loop
+            if not ret:
+                break
 
-            # Reduz o tamanho do vídeo
-            video_largura = 640
-            video_altura = 360
-            frame = cv2.resize(frame, (video_largura, video_altura))
+            # Exibir o vídeo no pygame (mesmo código anterior)
+            frame = cv2.resize(frame, (640, 360))
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # Cria a superfície do frame do vídeo
             surface = pygame.surfarray.make_surface(np.transpose(frame_rgb, (1, 0, 2)))
 
-            # Calcula posição central para o vídeo
-            pos_x = (largura - video_largura) // 2
-            pos_y = (altura - video_altura) // 2
-
             tela.fill(BRANCO)
-            nome_palavra = os.path.splitext(video_atual_nome)[0]
-            desenhar_texto(nome_palavra.capitalize(), fonte, PRETO, tela, largura // 2, pos_y - 40)
-            tela.blit(surface, (pos_x, pos_y))
+            nome_palavra = os.path.splitext(video_nome)[0]
+            desenhar_texto(nome_palavra.capitalize(), fonte, PRETO, tela, largura // 2, 150)
+            tela.blit(surface, (largura // 2 - 320, altura // 2 - 180))
 
-            # Espera conforme FPS do vídeo
-            video_fps = cap.get(cv2.CAP_PROP_FPS)
-            delay = int(1000 / video_fps) if video_fps > 0 else 33
-            pygame.time.delay(delay)
+            pygame.display.update()
+            pygame.time.delay(int(1000 / cap.get(cv2.CAP_PROP_FPS)))
 
-        else:
-            desenhar_texto("✅ Fim dos vídeos!", fonte, PRETO, tela, largura // 2, altura // 2)
+        cap.release()
+
+    # Fase 2: Reconhecimento dos gestos
+    webcam = cv2.VideoCapture(0)
+    current_gesture_index = 0
+    gesto_reconhecido = False
+
+    while current_gesture_index < len(videos):
+        tela.fill(BRANCO)
+
+        # Instrução para o jogador
+        nome_palavra = os.path.splitext(videos[current_gesture_index])[0]
+        desenhar_texto(f"Faça o gesto para:", fonte, PRETO, tela, largura // 2, 100)
+        desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 255), tela, largura // 2, 180)
+
+        # Captura e processa o frame da webcam
+        ret, frame = webcam.read()
+        if ret:
+            vetor_usuario = extrair_landmarks(frame)
+
+            # Carrega o vetor de referência
+            caminho_vetor = os.path.join("results", f"{nome_palavra}.npy")
+            if os.path.exists(caminho_vetor):
+                vetor_referencia = np.load(caminho_vetor)
+                distancia = comparar_gestos(vetor_usuario, vetor_referencia)
+
+                # Verifica se o gesto está correto
+                if distancia < 0.4:  # threshold
+                    gesto_reconhecido = True
+                    status_text = "✅ Correto! Próximo gesto..."
+                    status_color = (0, 255, 0)
+                else:
+                    status_text = "✋ Continue tentando..."
+                    status_color = (255, 0, 0)
+
+                # desenhar_texto(f"Similaridade: {1 - distancia:.2f}", fonte, PRETO, tela, largura // 2, 300)
+            else:
+                status_text = "Vetor de referência não encontrado"
+                status_color = (255, 165, 0)
+
+            desenhar_texto(status_text, fonte, status_color, tela, largura // 2, 400)
+
+            # Mostra o frame da webcam (opcional)
+            frame = cv2.resize(frame, (320, 240))
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            surface = pygame.surfarray.make_surface(np.transpose(frame_rgb, (1, 0, 2)))
+            tela.blit(surface, (largura // 2 - 160, 450))
+
+        # Avança para o próximo gesto quando reconhecido
+        if gesto_reconhecido:
+            pygame.time.delay(1000)  # Pequeno delay para feedback visual
+            current_gesture_index += 1
+            gesto_reconhecido = False
 
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
+                webcam.release()
                 pygame.quit()
                 sys.exit()
             elif evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
-                    rodando = False  # Volta ao menu
+                    webcam.release()
+                    return
 
         pygame.display.update()
+        pygame.time.delay(30)
+
+    webcam.release()
+    # Tela de conclusão
+    tela.fill(BRANCO)
+    desenhar_texto("🎉 Parabéns! Você completou todos os gestos!", fonte, PRETO, tela, largura // 2, altura // 2)
+    pygame.display.update()
+    pygame.time.delay(3000)
 
 
 # Executa o menu
