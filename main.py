@@ -93,13 +93,27 @@ def menu_selecao_palavras():
     selecionado = None
     botoes = []
 
-    for i in range(1, 7):
-        botao = pygame.Rect(largura // 2 - 100, altura // 2 - 50 + (i - 1) * 120, 200, 100)
-        botoes.append((i, botao))
+    # Configura grid
+    linhas = 3
+    colunas = 2
+    espaco_x = 250
+    espaco_y = 150
+    largura_botao = 200
+    altura_botao = 100
+    start_x = (largura - (colunas * largura_botao + (colunas - 1) * (espaco_x - largura_botao))) // 2
+    start_y = 200  # espaço para o título acima
+
+    num_botao = 1
+    for linha in range(linhas):
+        for coluna in range(colunas):
+            x = start_x + coluna * espaco_x
+            y = start_y + linha * espaco_y
+            botoes.append((num_botao, pygame.Rect(x, y, largura_botao, altura_botao)))
+            num_botao += 1
 
     while selecionado is None:
         tela.fill(BRANCO)
-        desenhar_texto("Escolha o número de palavras", fonte, PRETO, tela, largura // 2, altura // 4)
+        desenhar_texto("Escolha o número de palavras", fonte, PRETO, tela, largura // 2, 100)
 
         for i, botao in botoes:
             pygame.draw.rect(tela, CINZA, botao)
@@ -117,6 +131,7 @@ def menu_selecao_palavras():
 
         pygame.display.update()
     return None
+
 
 
 def menu():
