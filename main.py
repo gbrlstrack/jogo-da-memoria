@@ -6,7 +6,7 @@ import mediapipe as mp
 import numpy as np
 import os
 
-# Inicializa MediaPipe
+# ===================== MEDIA PIPE =====================
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(max_num_hands=1)
 vetores_preparados = False
@@ -63,12 +63,12 @@ def preparar_vetores_gestos(pasta_videos="assets", pasta_resultados="results"):
 
     print("✅ Todos os vetores foram preparados.")
 
-# ---------------- PYGAME INTERFACE ----------------
+# ===================== PYGAME CONFIG =====================
 pygame.init()
 largura = 1280
 altura = 720
 tela = pygame.display.set_mode((largura, altura))
-pygame.display.set_caption("Jogo de Memória com Gestos")
+pygame.display.set_caption("Jogo de Gestos")
 
 BRANCO = (255, 255, 255)
 PRETO = (0, 0, 0)
@@ -100,7 +100,14 @@ def desenhar_botao(botao, texto, mouse_pos):
     pygame.draw.rect(tela, PRETO, botao, 3, border_radius=15)
     desenhar_texto(texto, fonte, PRETO, tela, botao.centerx, botao.centery)
 
-# ---------------- MENUS ----------------
+def desenhar_barra_progresso(surface, x, y, largura, altura, progresso, cor_fundo=(200,200,200), cor_barra=(0,180,0)):
+    """Desenha uma barra de progresso horizontal."""
+    pygame.draw.rect(surface, cor_fundo, (x, y, largura, altura), border_radius=8)
+    largura_preenchida = int(largura * max(0, min(1, progresso)))
+    pygame.draw.rect(surface, cor_barra, (x, y, largura_preenchida, altura), border_radius=8)
+    pygame.draw.rect(surface, PRETO, (x, y, largura, altura), 2, border_radius=8)
+
+# ===================== MENUS =====================
 def menu_selecao_palavras():
     selecionado = None
     botoes = []
@@ -168,13 +175,13 @@ def menu():
 
         pygame.display.update()
 
-# ---------------- GAMEPLAY ----------------
+# ===================== GAMEPLAY =====================
 def jogo(num_palavras):
     videos = sorted([f for f in os.listdir('assets') if f.endswith('.mp4')])
     videos = videos[:num_palavras]
     random.shuffle(videos)
 
-    # Exibe os vídeos das palavras
+    # Exibe vídeos das palavras
     for video_nome in videos:
         video_path = os.path.join("assets", video_nome)
         cap = cv2.VideoCapture(video_path)
@@ -190,7 +197,8 @@ def jogo(num_palavras):
 
             desenhar_gradiente(tela, (240, 240, 255), (200, 220, 255))
             nome_palavra = os.path.splitext(video_nome)[0]
-            desenhar_texto(nome_palavra.capitalize(), fonte, PRETO, tela, largura // 2, 100)
+            desenhar_texto(f"Assista ao gesto para:", fonte, PRETO, tela, largura // 2, 80)
+            desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 150), tela, largura // 2, 150)
             tela.blit(surface, (largura // 2 - 320, altura // 2 - 180))
 
             pygame.display.update()
@@ -206,10 +214,14 @@ def jogo(num_palavras):
         desenhar_gradiente(tela, (240, 240, 255), (200, 220, 255))
 
         nome_palavra = os.path.splitext(videos[current_gesture_index])[0]
-        desenhar_texto(f"Faça o gesto para:", fonte, PRETO, tela, largura // 2, 80)
-        desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 180), tela, largura // 2, 150)
+        desenhar_texto(f"Faça o gesto para:", fonte, PRETO, tela, largura // 2, 60)
+        desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 180), tela, largura // 2, 120)
 
         ret, frame = webcam.read()
+        semelhanca = 0.0
+        status_text = ""
+        status_color = (200, 0, 0)
+
         if ret:
             vetor_usuario = extrair_landmarks(frame)
             caminho_vetor = os.path.join("results", f"{nome_palavra}.npy")
@@ -218,26 +230,31 @@ def jogo(num_palavras):
                 vetor_referencia = np.load(caminho_vetor)
                 distancia = comparar_gestos(vetor_usuario, vetor_referencia)
                 semelhanca = max(0, 1 - distancia)
-                desenhar_texto(f"Semelhança: {semelhanca:.2f}", fonte, PRETO, tela, largura // 2, 300)
 
                 if distancia < 0.5:
                     gesto_reconhecido = True
                     status_text = "✅ Gesto reconhecido!"
                     status_color = (0, 180, 0)
                 else:
-                    status_text = "✋ Tente imitar melhor o gesto!"
+                    status_text = "✋ Continue tentando!"
                     status_color = (200, 0, 0)
             else:
                 status_text = "⚠️ Vetor de referência não encontrado"
                 status_color = (255, 165, 0)
 
-            desenhar_texto(status_text, fonte, status_color, tela, largura // 2, 360)
+            # Barra de semelhança
+            desenhar_barra_progresso(tela, largura//2 - 200, 180, 400, 25, semelhanca)
 
+            # Caixa de feedback
+            pygame.draw.rect(tela, status_color, (largura//2 - 250, 220, 500, 50), border_radius=10)
+            desenhar_texto(status_text, fonte, BRANCO, tela, largura // 2, 245)
+
+            # Webcam
             frame = cv2.resize(frame, (320, 240))
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             surface = pygame.surfarray.make_surface(np.transpose(frame_rgb, (1, 0, 2)))
-            pygame.draw.rect(tela, PRETO, (largura // 2 - 160, 420, 320, 240), 3, border_radius=15)
-            tela.blit(surface, (largura // 2 - 160, 420))
+            pygame.draw.rect(tela, PRETO, (largura // 2 - 160, 300, 320, 240), 3, border_radius=12)
+            tela.blit(surface, (largura // 2 - 160, 300))
 
         if gesto_reconhecido:
             pygame.time.delay(1000)
@@ -262,5 +279,5 @@ def jogo(num_palavras):
     pygame.display.update()
     pygame.time.delay(3000)
 
-# ---------------- EXECUÇÃO ----------------
+# ===================== EXECUÇÃO =====================
 menu()
