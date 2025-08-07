@@ -177,9 +177,13 @@ def menu():
 
 # ===================== GAMEPLAY =====================
 def jogo(num_palavras):
+    import time  # Importa apenas dentro da função
+
     videos = sorted([f for f in os.listdir('assets') if f.endswith('.mp4')])
     videos = videos[:num_palavras]
     random.shuffle(videos)
+
+    score = 0  # Inicializa o score
 
     # Exibe vídeos das palavras
     for video_nome in videos:
@@ -211,73 +215,77 @@ def jogo(num_palavras):
     gesto_reconhecido = False
 
     while current_gesture_index < len(videos):
-        desenhar_gradiente(tela, (240, 240, 255), (200, 220, 255))
-
         nome_palavra = os.path.splitext(videos[current_gesture_index])[0]
-        desenhar_texto(f"Faça o gesto para:", fonte, PRETO, tela, largura // 2, 60)
-        desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 180), tela, largura // 2, 120)
+        start_time = time.time()  # Início do tempo para o gesto
 
-        ret, frame = webcam.read()
-        semelhanca = 0.0
-        status_text = ""
-        status_color = (200, 0, 0)
+        reconhecido = False
+        while not reconhecido:
+            desenhar_gradiente(tela, (240, 240, 255), (200, 220, 255))
 
-        if ret:
-            vetor_usuario = extrair_landmarks(frame)
-            caminho_vetor = os.path.join("results", f"{nome_palavra}.npy")
+            desenhar_texto(f"Faça o gesto para:", fonte, PRETO, tela, largura // 2, 60)
+            desenhar_texto(nome_palavra.capitalize(), fonte, (0, 0, 180), tela, largura // 2, 120)
+            desenhar_texto(f"Score: {score}", fonte, (0, 100, 0), tela, largura // 2, 170)
 
-            if os.path.exists(caminho_vetor):
-                vetor_referencia = np.load(caminho_vetor)
-                distancia = comparar_gestos(vetor_usuario, vetor_referencia)
-                semelhanca = max(0, 1 - distancia)
+            ret, frame = webcam.read()
+            semelhanca = 0.0
+            status_text = ""
+            status_color = (200, 0, 0)
 
-                if distancia < 0.5:
-                    gesto_reconhecido = True
-                    status_text = "✅ Gesto reconhecido!"
-                    status_color = (0, 180, 0)
+            if ret:
+                vetor_usuario = extrair_landmarks(frame)
+                caminho_vetor = os.path.join("results", f"{nome_palavra}.npy")
+
+                if os.path.exists(caminho_vetor):
+                    vetor_referencia = np.load(caminho_vetor)
+                    distancia = comparar_gestos(vetor_usuario, vetor_referencia)
+                    semelhanca = max(0, 1 - distancia)
+
+                    if distancia < 0.5:
+                        tempo_decorrido = time.time() - start_time
+                        pontos = max(10, int(100 - tempo_decorrido * 20))  # penalização por tempo
+                        score += pontos
+
+                        status_text = f"✅ Gesto reconhecido! +{pontos} pontos"
+                        status_color = (0, 180, 0)
+                        reconhecido = True
+                    else:
+                        status_text = "✋ Continue tentando!"
+                        status_color = (200, 0, 0)
                 else:
-                    status_text = "✋ Continue tentando!"
-                    status_color = (200, 0, 0)
-            else:
-                status_text = "⚠️ Vetor de referência não encontrado"
-                status_color = (255, 165, 0)
+                    status_text = "⚠️ Vetor de referência não encontrado"
+                    status_color = (255, 165, 0)
 
-            # Barra de semelhança
-            desenhar_barra_progresso(tela, largura//2 - 200, 180, 400, 25, semelhanca)
+                desenhar_barra_progresso(tela, largura//2 - 200, 200, 400, 25, semelhanca)
+                pygame.draw.rect(tela, status_color, (largura//2 - 250, 240, 500, 50), border_radius=10)
+                desenhar_texto(status_text, fonte, BRANCO, tela, largura // 2, 265)
 
-            # Caixa de feedback
-            pygame.draw.rect(tela, status_color, (largura//2 - 250, 220, 500, 50), border_radius=10)
-            desenhar_texto(status_text, fonte, BRANCO, tela, largura // 2, 245)
+                frame = cv2.resize(frame, (320, 240))
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                surface = pygame.surfarray.make_surface(np.transpose(frame_rgb, (1, 0, 2)))
+                pygame.draw.rect(tela, PRETO, (largura // 2 - 160, 320, 320, 240), 3, border_radius=12)
+                tela.blit(surface, (largura // 2 - 160, 320))
 
-            # Webcam
-            frame = cv2.resize(frame, (320, 240))
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            surface = pygame.surfarray.make_surface(np.transpose(frame_rgb, (1, 0, 2)))
-            pygame.draw.rect(tela, PRETO, (largura // 2 - 160, 300, 320, 240), 3, border_radius=12)
-            tela.blit(surface, (largura // 2 - 160, 300))
+            for evento in pygame.event.get():
+                if evento.type == pygame.QUIT:
+                    webcam.release()
+                    pygame.quit()
+                    sys.exit()
+                elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                    webcam.release()
+                    return
 
-        if gesto_reconhecido:
-            pygame.time.delay(1000)
-            current_gesture_index += 1
-            gesto_reconhecido = False
+            pygame.display.update()
+            pygame.time.delay(30)
 
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                webcam.release()
-                pygame.quit()
-                sys.exit()
-            elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
-                webcam.release()
-                return
-
-        pygame.display.update()
-        pygame.time.delay(30)
+        pygame.time.delay(1000)
+        current_gesture_index += 1
 
     webcam.release()
     desenhar_gradiente(tela, (240, 240, 255), (200, 220, 255))
-    desenhar_texto("🎉 Parabéns! Você completou todos os gestos!", fonte, PRETO, tela, largura // 2, altura // 2)
+    desenhar_texto("🎉 Parabéns! Você completou todos os gestos!", fonte, PRETO, tela, largura // 2, altura // 2 - 40)
+    desenhar_texto(f"🏆 Score Final: {score}", fonte, (0, 120, 0), tela, largura // 2, altura // 2 + 40)
     pygame.display.update()
-    pygame.time.delay(3000)
+    pygame.time.delay(4000)
 
 # ===================== EXECUÇÃO =====================
 menu()
